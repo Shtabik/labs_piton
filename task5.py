@@ -1,8 +1,7 @@
-num = int(input("Введите число: "))
-if num % 7 == 0:
+number = int(input("Введите число: "))
+if number % 7 == 0:
     print("Магическое число!")
 else:
-    s =0
-    for el in str(num):   # превращаем число в строку и идём по цифрам
-        s += int(el)      # переводим символ обратно в число и прибавляем
-    print(s)
+    # Преобразуем число в строку, затем каждый символ в цифру и суммируем
+    digits_sum = sum(map(int, str(number)))
+    print(digits_sum)
