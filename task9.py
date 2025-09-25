@@ -1,13 +1,18 @@
 ip = input("Введите IP-адрес: ")
 parts = ip.split(".")
-
 if len(parts) != 4:
     print("Некорректный IP")
 else:
-    if (parts[0].isdigit() and 0 <= int(parts[0]) <= 255 and
-        parts[1].isdigit() and 0 <= int(parts[1]) <= 255 and
-        parts[2].isdigit() and 0 <= int(parts[2]) <= 255 and
-        parts[3].isdigit() and 0 <= int(parts[3]) <= 255):
+    valid = True
+    for part in parts:
+        if not part.isdigit():
+            valid = False
+            break
+        num = int(part)
+        if num < 0 or num > 255:
+            valid = False
+            break
+    if valid:
         print("Корректный IP")
     else:
         print("Некорректный IP")
