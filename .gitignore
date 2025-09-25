@@ -1,0 +1,26 @@
+# Папка PyCharm (индивидуальные настройки IDE)
+.idea/
+
+# Байткод Python (*.pyc, *.pyo) и кэши
+__pycache__/
+*.py[cod]
+
+# Виртуальное окружение
+venv/
+.env/
+.venv/
+
+# Логи
+*.log
+
+# Кэш и временные файлы
+*.swp
+*.tmp
+*.bak
+
+# Jupyter Notebook контрольные файлы
+.ipynb_checkpoints/
+
+# Файлы систем
+.DS_Store
+Thumbs.db
