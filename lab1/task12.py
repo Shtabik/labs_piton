@@ -40,5 +40,6 @@ if dopsms > 0:
     print(f"Дополнительно за смс: {dopsms_cost:.2f} руб.")
 if dopmb > 0:
     print(f"Дополнительно за интернет: {dopmb_cost:.2f} руб.")
+print(f"Дополнительно за все использование функций:{dopminutes_cost+dopsms_cost+dopmb_cost}")
 print(f"Налог (2%): {tax_amount:.2f} руб.")
 print(f"Итого к оплате: {total:.2f} руб.")
