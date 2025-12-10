@@ -36,7 +36,9 @@ print(df)
 
 
 plt.figure(figsize=(8, 5))
-plt.bar(df["вид товара"], df["реализация"], color='skyblue')
+barsf=plt.bar(df["вид товара"], df["реализация"], color='skyblue')
+plt.bar_label(barsf)
+
 plt.title("Реализация продукции по видам (в у.е.)")
 plt.xlabel("Вид товара")
 plt.ylabel("Сумма реализации")
@@ -65,19 +67,19 @@ plt.show()
 
 # ----- График 4: Сравнение Массы и Продаж (Сгруппированные Столбцы) -----
 plt.figure(figsize=(10, 6))
-
 x = np.arange(len(df["вид товара"]))
 width = 0.4
 
-rects1 = plt.bar(x - width/2, df["масса"], width, label='Всего урожая (кг)', color='red')
+rects1 = plt.plot(x - width/2, df["масса"], width, label='Всего урожая (кг)', color='red')
 
-rects2 = plt.bar(x + width/2, df["кол-во проданного"], width, label='Реализовано (кг)', color='green')
+rects2 = plt.plot(x + width/2, df["кол-во проданного"], width, label='Реализовано (кг)', color='green')
 
 plt.ylabel('Килограммы', fontsize=12)
 plt.title('Соотношение собранного урожая и продаж', fontsize=14)
 plt.xticks(x, df["вид товара"], fontsize=10)
 plt.legend(frameon=False)
 plt.grid(axis='y', linestyle='-', alpha=0.3)
+
 
 plt.tight_layout()
 plt.show()
