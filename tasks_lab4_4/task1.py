@@ -8,14 +8,21 @@ import seaborn as sns
 import matplotlib.ticker as ticker
 from statsmodels.tsa.statespace.sarimax import SARIMAX
 
+# Настройки отображения pandas
 pd.set_option('display.max_columns', None)
 pd.set_option('display.width', None)
+
+# Отключаем предупреждения
 warnings.filterwarnings("ignore")
 
+# -----------------------------
 # Настройки
+# -----------------------------
 OUTPUT_DIR = "outputs_ru"
 os.makedirs(OUTPUT_DIR, exist_ok=True)
-CSV_PATH = os.path.join(OUTPUT_DIR, "s7_tickets_v3.csv")
+CSV_PATH = os.path.join(OUTPUT_DIR, "s7_tickets_v4.csv")  # v4 - исправленная версия
+
+# Настройка стилей
 sns.set(style="whitegrid", palette="muted")
 plt.rcParams['figure.figsize'] = (12, 6)
 
@@ -24,7 +31,10 @@ RANDOM_SEED = 42
 np.random.seed(RANDOM_SEED)
 random.seed(RANDOM_SEED)
 
-# 1. Генерация данных
+
+# -----------------------------
+# 1. Генерация данных (ИСПРАВЛЕНА ЛОГИКА ЛОЯЛЬНОСТИ)
+# -----------------------------
 def generate_synthetic_s7_direct_ru(start_date="2021-01-01", end_date="2024-12-31", n_records_per_day=40):
     print("Генерация синтетических данных и расчет статусов...")
     start = pd.to_datetime(start_date)
@@ -40,7 +50,8 @@ def generate_synthetic_s7_direct_ru(start_date="2021-01-01", end_date="2024-12-3
     passenger_types = ["Взрослый", "Ребенок", "Младенец"]
     booking_classes = ["Эконом", "Премиум", "Бизнес"]
 
-    passenger_ids_pool = list(range(1, 5001))
+    # !!! ИСПРАВЛЕНИЕ: Увеличен пул ID пассажиров до 50,000 для реалистичного распределения статусов
+    passenger_ids_pool = list(range(1, 50001))
 
     records = []
     for d in all_dates:
@@ -75,7 +86,6 @@ def generate_synthetic_s7_direct_ru(start_date="2021-01-01", end_date="2024-12-3
             payment = random.choices(payment_methods, weights=[0.6, 0.15, 0.05, 0.1, 0.1])[0]
             p_type = random.choices(passenger_types, weights=[0.85, 0.12, 0.03])[0]
 
-            # Присваиваем ID сразу
             p_id = random.choice(passenger_ids_pool)
 
             records.append({
@@ -93,7 +103,6 @@ def generate_synthetic_s7_direct_ru(start_date="2021-01-01", end_date="2024-12-3
     df = pd.DataFrame(records)
 
     # --- ВНУТРЕННЯЯ ЛОГИКА СТАТУСОВ ---
-
     print("   -> Расчет статусов лояльности...")
     flights_per_passenger = df["Пассажир_ID"].value_counts()
 
@@ -107,14 +116,15 @@ def generate_synthetic_s7_direct_ru(start_date="2021-01-01", end_date="2024-12-3
         else:
             return "Платина"
 
-
     id_to_status = flights_per_passenger.map(get_status)
     df["Статус_лояльности"] = df["Пассажир_ID"].map(id_to_status)
 
     return df
 
-# 2. Загрузка
 
+# -----------------------------
+# 2. Загрузка
+# -----------------------------
 def load_data():
     if os.path.exists(CSV_PATH):
         print(f"Загрузка данных из {CSV_PATH}...")
@@ -131,7 +141,9 @@ def load_data():
     return df
 
 
-# 3. Функции сохранения статистики
+# -----------------------------
+# 3. Функции сохранения статистики (ИСПРАВЛЕНО: Индекс стал столбцом "Параметр")
+# -----------------------------
 def save_statistics(df):
     print("Расчет и сохранение статистики...")
 
@@ -152,7 +164,7 @@ def save_statistics(df):
         "min": "Минимум", "max": "Максимум", "50%": "Медиана"
     }, inplace=True)
 
-
+    # КЛЮЧЕВОЕ ИЗМЕНЕНИЕ: Превращаем индекс в столбец "Параметр"
     num_stats = num_stats.reset_index().rename(columns={'index': 'Параметр'})
     num_file = os.path.join(OUTPUT_DIR, "stats_numerical_general.csv")
     num_stats.to_csv(num_file, index=False)
@@ -175,14 +187,16 @@ def save_statistics(df):
             "freq": "Частота_моды"
         }, inplace=True)
 
-
+        # КЛЮЧЕВОЕ ИЗМЕНЕНИЕ: Превращаем индекс в столбец "Параметр"
         cat_stats = cat_stats.reset_index().rename(columns={'index': 'Параметр'})
         cat_file = os.path.join(OUTPUT_DIR, "stats_category_general.csv")
         cat_stats.to_csv(cat_file, index=False)
         print(f"-> Категориальная статистика сохранена: {cat_file}")
 
 
+# -----------------------------
 # 4. Визуализация
+# -----------------------------
 def plot_dynamics(df):
     monthly = df.groupby("Месяц").agg({"Стоимость_руб": "sum", "Аэропорт_вылета": "count"}).rename(
         columns={"Стоимость_руб": "Выручка", "Аэропорт_вылета": "Продажи_шт"}
@@ -215,7 +229,6 @@ def plot_airports_heatmap(df):
     plt.figure(figsize=(12, 10))
     sns.heatmap(pivot_routes, annot=True, fmt=".0f", cmap="YlGnBu", linewidths=.5)
     plt.title("Тепловая карта загруженности маршрутов")
-    plt.xticks(rotation=45, ha='center')
     plt.tight_layout()
     plt.savefig(os.path.join(OUTPUT_DIR, "2_routes_heatmap.png"))
     plt.close()
@@ -281,7 +294,9 @@ def plot_passenger_class(df):
 def plot_loyalty_status(df):
     plt.figure(figsize=(10, 6))
     counts = df["Статус_лояльности"].value_counts()
-    ax = sns.barplot(x=counts.index, y=counts.values, palette="coolwarm")
+    # Сортировка для наглядности (если это не сработает автоматически)
+    order = ["Нет статуса", "Серебро", "Золото", "Платина"]
+    ax = sns.barplot(x=counts.index, y=counts.values, palette="coolwarm", order=order)
     plt.title("Распределение пассажиров по статусам лояльности")
     for container in ax.containers:
         ax.bar_label(container)
@@ -337,7 +352,9 @@ def run_forecast(monthly_df):
     make_sarima(monthly_df["Продажи_шт"], "Количество билетов (шт)", "6_forecast_tickets.png")
 
 
+# -----------------------------
 # MAIN
+# -----------------------------
 def main():
     # 1. Загрузка (теперь статус уже внутри датасета)
     df = load_data()
@@ -352,7 +369,7 @@ def main():
     plot_seasonality(df)
     plot_payment_analysis(df)
     plot_passenger_class(df)
-    plot_loyalty_status(df)
+    plot_loyalty_status(df)  # Теперь этот график будет корректным
     plot_day_of_week(df)
     run_forecast(monthly_data)
 
