@@ -6,57 +6,41 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
 import matplotlib.ticker as ticker
-from statsmodels.tsa.seasonal import seasonal_decompose
 from statsmodels.tsa.statespace.sarimax import SARIMAX
 
-# Отключаем предупреждения для чистоты вывода
+pd.set_option('display.max_columns', None)
+pd.set_option('display.width', None)
 warnings.filterwarnings("ignore")
 
-# -----------------------------
 # Настройки
-# -----------------------------
 OUTPUT_DIR = "outputs_ru"
 os.makedirs(OUTPUT_DIR, exist_ok=True)
-
-# Настройка стилей для графиков
+CSV_PATH = os.path.join(OUTPUT_DIR, "s7_tickets_v3.csv")
 sns.set(style="whitegrid", palette="muted")
 plt.rcParams['figure.figsize'] = (12, 6)
 
+# Фиксация случайности
 RANDOM_SEED = 42
 np.random.seed(RANDOM_SEED)
 random.seed(RANDOM_SEED)
 
-# ИСПРАВЛЕНИЕ: Теперь CSV сохраняется внутри папки outputs_ru
-CSV_PATH = os.path.join(OUTPUT_DIR, "s7_tickets.csv")
-
-# Словари для перевода
-TRANSLATION_MAP = {
-    "booking_class": {"economy": "Эконом", "premium": "Премиум", "business": "Бизнес"},
-    "passenger_type": {"adult": "Взрослый", "child": "Ребенок", "infant": "Младенец"},
-    "payment_method": {
-        "card": "Банковская карта", "apple_pay": "SberPay/MirPay",
-        "google_pay": "SberPay/MirPay", "cash": "Наличные", "bank_transfer": "Счет на оплату"
-    },
-    "loyalty_status": {"silver": "Серебро", "gold": "Золото", "none": "Нет статуса"}
-}
-
-
-# -----------------------------
-# 1. Генерация данных (на русском)
-# -----------------------------
-def generate_synthetic_s7_ru(start_date="2021-01-01", end_date="2024-12-31", n_records_per_day=40):
-    print("Генерация синтетических данных...")
+# 1. Генерация данных
+def generate_synthetic_s7_direct_ru(start_date="2021-01-01", end_date="2024-12-31", n_records_per_day=40):
+    print("Генерация синтетических данных и расчет статусов...")
     start = pd.to_datetime(start_date)
     end = pd.to_datetime(end_date)
     all_dates = pd.date_range(start, end, freq="D")
 
-    origins = ["SVO", "DME", "LED", "KRR", "OVB", "ROV", "VKO", "IKT"]
-    destinations = ["SVO", "LED", "AYT", "SVX", "KZN", "KUF", "OGZ", "VVO"]
+    origins = ["Шереметьево (SVO)", "Домодедово (DME)", "Пулково (LED)", "Пашковский (KRR)",
+               "Толмачево (OVB)", "Платов (ROV)", "Внуково (VKO)", "Иркутск (IKT)"]
+    destinations = ["Шереметьево (SVO)", "Пулково (LED)", "Анталья (AYT)", "Кольцово (SVX)",
+                    "Казань (KZN)", "Курумоч (KUF)", "Владикавказ (OGZ)", "Владивосток (VVO)"]
 
     payment_methods = ["Банковская карта", "SberPay/MirPay", "Наличные", "Счет на оплату", "СБП"]
     passenger_types = ["Взрослый", "Ребенок", "Младенец"]
     booking_classes = ["Эконом", "Премиум", "Бизнес"]
-    loyalty_statuses = ["Нет статуса", "Серебро", "Золото", "Платина"]
+
+    passenger_ids_pool = list(range(1, 5001))
 
     records = []
     for d in all_dates:
@@ -68,9 +52,7 @@ def generate_synthetic_s7_ru(start_date="2021-01-01", end_date="2024-12-31", n_r
         elif d.month in (1, 2):
             season_factor = 0.8
 
-        # Добавим эффект пятницы (люди чаще летают)
-        if d.dayofweek == 4:  # 4 = Пятница
-            season_factor *= 1.2
+        if d.dayofweek == 4: season_factor *= 1.2
 
         n = max(1, int(n_records_per_day * (0.8 + np.random.rand() * 0.4) * season_factor))
 
@@ -81,6 +63,7 @@ def generate_synthetic_s7_ru(start_date="2021-01-01", end_date="2024-12-31", n_r
 
             base_fare = np.random.normal(9000, 3500)
             cls = random.choices(booking_classes, weights=[0.8, 0.15, 0.05])[0]
+
             if cls == "Премиум":
                 base_fare *= 1.7
             elif cls == "Бизнес":
@@ -91,58 +74,115 @@ def generate_synthetic_s7_ru(start_date="2021-01-01", end_date="2024-12-31", n_r
 
             payment = random.choices(payment_methods, weights=[0.6, 0.15, 0.05, 0.1, 0.1])[0]
             p_type = random.choices(passenger_types, weights=[0.85, 0.12, 0.03])[0]
-            loyalty = random.choices(loyalty_statuses, weights=[0.85, 0.1, 0.04, 0.01])[0]
+
+            # Присваиваем ID сразу
+            p_id = random.choice(passenger_ids_pool)
 
             records.append({
                 "Дата_покупки": purchase_date,
-                "Аэропорт_вылета": origin, "Аэропорт_прилета": dest,
-                "Сегментов": segments, "Класс_бронирования": cls,
-                "Стоимость_руб": fare, "Способ_оплаты": payment,
-                "Тип_пассажира": p_type, "Статус_лояльности": loyalty
+                "Пассажир_ID": p_id,
+                "Аэропорт_вылета": origin,
+                "Аэропорт_прилета": dest,
+                "Сегментов": segments,
+                "Класс_бронирования": cls,
+                "Стоимость_руб": fare,
+                "Способ_оплаты": payment,
+                "Тип_пассажира": p_type
             })
 
-    return pd.DataFrame(records)
+    df = pd.DataFrame(records)
+
+    # --- ВНУТРЕННЯЯ ЛОГИКА СТАТУСОВ ---
+
+    print("   -> Расчет статусов лояльности...")
+    flights_per_passenger = df["Пассажир_ID"].value_counts()
+
+    def get_status(flights):
+        if flights < 5:
+            return "Нет статуса"
+        elif flights < 15:
+            return "Серебро"
+        elif flights < 30:
+            return "Золото"
+        else:
+            return "Платина"
 
 
-# -----------------------------
-# 2. Загрузка и предобработка
-# -----------------------------
+    id_to_status = flights_per_passenger.map(get_status)
+    df["Статус_лояльности"] = df["Пассажир_ID"].map(id_to_status)
+
+    return df
+
+# 2. Загрузка
+
 def load_data():
     if os.path.exists(CSV_PATH):
         print(f"Загрузка данных из {CSV_PATH}...")
         df = pd.read_csv(CSV_PATH)
-
-        rename_dict = {
-            "purchase_datetime": "Дата_покупки", "origin": "Аэропорт_вылета",
-            "destination": "Аэропорт_прилета", "segments": "Сегментов",
-            "booking_class": "Класс_бронирования", "fare": "Стоимость_руб",
-            "payment_method": "Способ_оплаты", "passenger_type": "Тип_пассажира",
-            "loyalty_status": "Статус_лояльности"
-        }
-        df.rename(columns=rename_dict, inplace=True)
-
-        for col, mapping in TRANSLATION_MAP.items():
-            ru_col = rename_dict.get(col, col)
-            if ru_col in df.columns and df[ru_col].iloc[0] in mapping.keys():
-                df[ru_col] = df[ru_col].map(mapping).fillna(df[ru_col])
     else:
-        df = generate_synthetic_s7_ru()
+        df = generate_synthetic_s7_direct_ru()
         df.to_csv(CSV_PATH, index=False)
 
     df["Дата_покупки"] = pd.to_datetime(df["Дата_покупки"])
     df["Месяц"] = df["Дата_покупки"].dt.to_period("M").dt.to_timestamp()
-
-    # Дни недели для аналитики
     days_map = {0: 'Пн', 1: 'Вт', 2: 'Ср', 3: 'Чт', 4: 'Пт', 5: 'Сб', 6: 'Вс'}
     df["День_недели"] = df["Дата_покупки"].dt.dayofweek.map(days_map)
 
     return df
 
 
-# -----------------------------
-# 3. Визуализация и Анализ
-# -----------------------------
+# 3. Функции сохранения статистики
+def save_statistics(df):
+    print("Расчет и сохранение статистики...")
 
+    # --- А. ЧИСЛЕННЫЕ ДАННЫЕ ---
+    numeric_df = df.select_dtypes(include=[np.number])
+    if "Пассажир_ID" in numeric_df.columns:
+        numeric_df = numeric_df.drop(columns=["Пассажир_ID"])
+
+    # Базовая статистика
+    num_stats = numeric_df.describe().T
+
+    # Добавляем МОДУ
+    modes = numeric_df.mode().iloc[0]
+    num_stats['Мода'] = modes
+
+    num_stats.rename(columns={
+        "count": "Количество", "mean": "Среднее", "std": "Стд_отклонение",
+        "min": "Минимум", "max": "Максимум", "50%": "Медиана"
+    }, inplace=True)
+
+
+    num_stats = num_stats.reset_index().rename(columns={'index': 'Параметр'})
+    num_file = os.path.join(OUTPUT_DIR, "stats_numerical_general.csv")
+    num_stats.to_csv(num_file, index=False)
+    print(f"-> Численная статистика (с модой) сохранена: {num_file}")
+
+    # --- Б. КАТЕГОРИАЛЬНЫЕ ДАННЫЕ ---
+    cat_df = df.select_dtypes(include=['object'])
+
+    if not cat_df.empty:
+        cat_stats = cat_df.describe().T
+
+        # Добавляем долю в процентах
+        cat_stats['Доля_моды_%'] = (cat_stats['freq'] / cat_stats['count'] * 100).round(2)
+
+        # Переименовываем столбцы научно
+        cat_stats.rename(columns={
+            "count": "Объем_выборки",
+            "unique": "Количество_уникальных",
+            "top": "Мода (самое_популярное)",
+            "freq": "Частота_моды"
+        }, inplace=True)
+
+
+        cat_stats = cat_stats.reset_index().rename(columns={'index': 'Параметр'})
+        cat_file = os.path.join(OUTPUT_DIR, "stats_category_general.csv")
+        cat_stats.to_csv(cat_file, index=False)
+        print(f"-> Категориальная статистика сохранена: {cat_file}")
+
+
+# 4. Визуализация
 def plot_dynamics(df):
     monthly = df.groupby("Месяц").agg({"Стоимость_руб": "sum", "Аэропорт_вылета": "count"}).rename(
         columns={"Стоимость_руб": "Выручка", "Аэропорт_вылета": "Продажи_шт"}
@@ -171,10 +211,11 @@ def plot_dynamics(df):
 
 def plot_airports_heatmap(df):
     routes = df.groupby(["Аэропорт_вылета", "Аэропорт_прилета"]).size().reset_index(name="count")
-    pivot_routes = routes.pivot(index="Аэропорт_вылета", columns="Аэропорт_прилета", values="count").fillna(0)
-    plt.figure(figsize=(10, 8))
+    pivot_routes = routes.pivot(index="Аэропорт_прилета", columns="Аэропорт_вылета", values="count").fillna(0)
+    plt.figure(figsize=(12, 10))
     sns.heatmap(pivot_routes, annot=True, fmt=".0f", cmap="YlGnBu", linewidths=.5)
     plt.title("Тепловая карта загруженности маршрутов")
+    plt.xticks(rotation=45, ha='center')
     plt.tight_layout()
     plt.savefig(os.path.join(OUTPUT_DIR, "2_routes_heatmap.png"))
     plt.close()
@@ -182,27 +223,45 @@ def plot_airports_heatmap(df):
 
 def plot_seasonality(df):
     df['Номер_месяца'] = df['Дата_покупки'].dt.month
+    month_names = ["Янв", "Фев", "Мар", "Апр", "Май", "Июн", "Июл", "Авг", "Сен", "Окт", "Ноя", "Дек"]
+
+    monthly_mean = df.groupby('Номер_месяца')['Стоимость_руб'].mean()
     plt.figure(figsize=(12, 6))
-    sns.boxplot(x='Номер_месяца', y='Стоимость_руб', data=df, palette="coolwarm", showfliers=False)
-    plt.title("Распределение стоимости билетов по месяцам")
-    plt.xlabel("Месяц (1=Январь)")
+    bars = plt.bar(monthly_mean.index, monthly_mean.values, color="skyblue")
+    plt.title("Средняя стоимость билетов по месяцам")
+    plt.xlabel("Месяц")
+    plt.ylabel("Средняя стоимость, руб")
+    plt.xticks(monthly_mean.index, [month_names[m - 1] for m in monthly_mean.index])
+    plt.bar_label(bars, fmt="%.0f", padding=5)
+
+    y_min = monthly_mean.min() - 500
+    y_max = monthly_mean.max() + 500
+    plt.ylim(y_min, y_max)
     plt.tight_layout()
-    plt.savefig(os.path.join(OUTPUT_DIR, "3_seasonality_boxplot.png"))
+    plt.savefig(os.path.join(OUTPUT_DIR, "3_seasonality_bar.png"))
     plt.close()
 
 
 def plot_payment_analysis(df):
     pay_counts = df["Способ_оплаты"].value_counts()
     pay_mean = df.groupby("Способ_оплаты")["Стоимость_руб"].mean().sort_values(ascending=False)
+
     fig, axes = plt.subplots(1, 2, figsize=(16, 6))
+
     axes[0].pie(pay_counts, labels=pay_counts.index, autopct='%1.1f%%', startangle=140,
                 colors=sns.color_palette("pastel"))
     axes[0].set_title("Доля способов оплаты")
+
     sns.barplot(x=pay_mean.index, y=pay_mean.values, ax=axes[1], palette="viridis")
+    y_min = pay_mean.min() - 500
+    y_max = pay_mean.max() + 500
+    axes[1].set_ylim(y_min, y_max)
     axes[1].set_title("Средний чек по способу оплаты")
-    axes[1].tick_params(axis='x', rotation=45)
+    axes[1].tick_params(axis='x', rotation=15)
+
     for i, v in enumerate(pay_mean.values):
-        axes[1].text(i, v + 100, f"{int(v)} ₽", ha='center', va='bottom', fontsize=10)
+        axes[1].text(i, v, f"{int(v)} ₽", ha='center', va='bottom', fontsize=10)
+
     plt.tight_layout()
     plt.savefig(os.path.join(OUTPUT_DIR, "4_payment_analysis.png"))
     plt.close()
@@ -219,26 +278,39 @@ def plot_passenger_class(df):
     plt.close()
 
 
-# НОВАЯ ФУНКЦИЯ: Популярность дней недели
+def plot_loyalty_status(df):
+    plt.figure(figsize=(10, 6))
+    counts = df["Статус_лояльности"].value_counts()
+    ax = sns.barplot(x=counts.index, y=counts.values, palette="coolwarm")
+    plt.title("Распределение пассажиров по статусам лояльности")
+    for container in ax.containers:
+        ax.bar_label(container)
+    plt.tight_layout()
+    plt.savefig(os.path.join(OUTPUT_DIR, "bonus_loyalty_status.png"))
+    plt.close()
+
+
 def plot_day_of_week(df):
     plt.figure(figsize=(10, 5))
     order = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс']
     counts = df["День_недели"].value_counts()
-    sns.barplot(x=counts.index, y=counts.values, order=order, palette="autumn")
+    ax = sns.barplot(x=counts.index, y=counts.values, order=order, palette="autumn")
     plt.title("В какие дни недели чаще всего покупают билеты?")
-    plt.ylabel("Количество билетов")
+    for container in ax.containers:
+        ax.bar_label(container)
+    y_min = counts.min() - 500
+    y_max = counts.max() + 500
+    plt.ylim(y_min, y_max)
     plt.tight_layout()
     plt.savefig(os.path.join(OUTPUT_DIR, "bonus_day_of_week.png"))
     plt.close()
 
 
-# ОБНОВЛЕННАЯ ФУНКЦИЯ: Прогноз (теперь два графика: Выручка и Билеты)
 def run_forecast(monthly_df):
     if len(monthly_df) < 12:
         print("Мало данных для прогноза.")
         return
 
-    # Вспомогательная функция, чтобы не дублировать код
     def make_sarima(series, title, filename):
         try:
             model = SARIMAX(series, order=(1, 1, 1), seasonal_order=(1, 1, 0, 12),
@@ -257,37 +329,32 @@ def run_forecast(monthly_df):
             plt.grid(True)
             plt.savefig(os.path.join(OUTPUT_DIR, filename))
             plt.close()
-            print(f"-> Прогноз '{title}' построен.")
+            print(f"-> Прогноз '{title}' сохранен в {filename}")
         except Exception as e:
             print(f"Ошибка прогноза {title}: {e}")
 
-    # 1. Прогноз денег
     make_sarima(monthly_df["Выручка"], "Выручка (руб)", "6_forecast_revenue.png")
-    # 2. Прогноз количества билетов (НОВОЕ)
     make_sarima(monthly_df["Продажи_шт"], "Количество билетов (шт)", "6_forecast_tickets.png")
 
 
-# -----------------------------
 # MAIN
-# -----------------------------
 def main():
+    # 1. Загрузка (теперь статус уже внутри датасета)
     df = load_data()
     print(f"Данные готовы. Записей: {len(df)}")
 
-    # Статистика
-    desc = df[["Стоимость_руб", "Сегментов"]].describe().T
-    desc.to_csv(os.path.join(OUTPUT_DIR, "stats_general.csv"))
-    print(desc)
+    # 2. Сохранение статистики (раздельной и правильной)
+    save_statistics(df)
 
-    monthly_data = plot_dynamics(df)  # График 1
-    plot_airports_heatmap(df)  # График 2
-    plot_seasonality(df)  # График 3
-    plot_payment_analysis(df)  # График 4
-    plot_passenger_class(df)  # График 5
-
-    # Запуск новых функций
-    plot_day_of_week(df)  # БОНУС: График дней недели
-    run_forecast(monthly_data)  # ОБНОВЛЕНО: Прогноз и выручки, и билетов
+    # 3. Графики
+    monthly_data = plot_dynamics(df)
+    plot_airports_heatmap(df)
+    plot_seasonality(df)
+    plot_payment_analysis(df)
+    plot_passenger_class(df)
+    plot_loyalty_status(df)
+    plot_day_of_week(df)
+    run_forecast(monthly_data)
 
     print(f"\nГотово! Все файлы в папке: {OUTPUT_DIR}")
 
