@@ -182,7 +182,7 @@ def forecast_sales(df: pd.DataFrame):
         try:
             # SARIMAX
             model = SARIMAX(ts, order=(1, 1, 1), seasonal_order=(0, 1, 1, 12),
-                            enforce_stationarity=False, enforce_invertibility=False)
+                            enforce_stationarity=True, enforce_invertibility=True)
             model_fit = model.fit(disp=False)
 
             forecast_steps = 6
